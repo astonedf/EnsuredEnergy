@@ -23,9 +23,10 @@ using System;
 public partial class Camera : Camera2D {
 
 	// Camera control parameters
-	private Vector2 ZOOM_MIN = new (0.3f,0.3f);
-	private Vector2 ZOOM_MAX = new (0.8f,0.8f);
-	private Vector2 ZOOM_SPEED = new (0.2f,0.2f);
+	// lower values are more zoomed in Godot 3 (that behavior was inverted in Godot 4)
+	private Vector2 ZOOM_IN_LIMIT = new (2f,2f);
+	private Vector2 ZOOM_OUT_LIMIT = new (4f,4f);
+	private Vector2 ZOOM_SPEED = new (0.6f,0.6f);
 	private Vector2 ZoomVal = new (0.8f,0.8f);
 	private Vector2 SCALE_LIMIT = new (0.65f, 0.65f);
 	private Vector2 PLANT_ZOOM = new (0.55f, 0.55f);
@@ -36,6 +37,7 @@ public partial class Camera : Camera2D {
 	// Record initial position and zoom for reset
 	private Vector2 InitPos;
 	private Vector2 InitZoom;
+
 
 	// ==================== GODOT Method Overrides ====================
 
@@ -77,15 +79,15 @@ public partial class Camera : Camera2D {
 		if(E is InputEventMagnifyGesture Magnify) {
 			var zoom_factor = Zoom;
 			zoom_factor *= Magnify.Factor;
-			TargetZoom = zoom_factor.Clamp(ZOOM_MIN, ZOOM_MAX);
+			TargetZoom = ClampVector2(zoom_factor, ZOOM_IN_LIMIT, ZOOM_OUT_LIMIT);
 			Zoom = TargetZoom;
 			//ScalePlants(TargetZoom);
 		}
 		if(E is InputEventPanGesture Pan) {
 			var zoom_factor = Zoom;
-			zoom_factor.Y += Pan.Delta.Y * zoom_sensitivity;
-			zoom_factor.X += Pan.Delta.Y * zoom_sensitivity;
-			TargetZoom = zoom_factor.Clamp(ZOOM_MIN, ZOOM_MAX);
+			zoom_factor.y += Pan.Delta.y * zoom_sensitivity;
+			zoom_factor.x += Pan.Delta.y * zoom_sensitivity;
+			TargetZoom = ClampVector2(zoom_factor, ZOOM_IN_LIMIT, ZOOM_OUT_LIMIT);
 			Zoom = TargetZoom;
 			//ScalePlants(TargetZoom);
 		}
@@ -93,33 +95,36 @@ public partial class Camera : Camera2D {
 		// Camera can be moved by holding left click and dragging the mouse
 		if(E is InputEventMouseMotion MouseMotion) {
 			if(MouseMotion.ButtonMask == MouseButtonMask.Left) {
-				Position -= MouseMotion.Relative / Zoom;
+				Position -= MouseMotion.Relative * Zoom;
 			}
 		}
 
 		// Can zoom the camera using the mouse wheel, smoothed with a tween animation
 		if(E is InputEventMouseButton MouseBtn) {
 			// Check what type of scroll was done
+
 			// If we are scrolling down, then we want the view to zoom out
 			if (MouseBtn.ButtonIndex == MouseButton.WheelDown) {
 					// Make sure that we clamp the zoom to avoid seeing out of the scene
-					if(Zoom > ZOOM_MIN) {
+
+					if(Zoom < ZOOM_OUT_LIMIT) {
 						// Udpate the zoom using a fancy animation to smoothen the transition
-						var NewZoom = Zoom - ZOOM_SPEED;
-						ZoomVal = NewZoom.Clamp(ZOOM_MIN, ZOOM_MAX);
-						Tween TweenZoomIn = CreateTween();
+						var NewZoom = Zoom + ZOOM_SPEED;
+						ZoomVal = ClampVector2(NewZoom, ZOOM_IN_LIMIT, ZOOM_OUT_LIMIT);
+						SceneTreeTween TweenZoomIn = CreateTween();
 						TweenZoomIn.TweenProperty(this, "zoom", ZoomVal, 0.3f);
 						//ScalePlants(ZoomVal);
 					}
 			}
-			// If we are scrolling up, the we want the view to zoom in
+
+			// If we are scrolling up, then we want the view to zoom in
 			if (MouseBtn.ButtonIndex == MouseButton.WheelUp) {
 					// Make sure we can't over zoom
-					if(Zoom < ZOOM_MAX) {
+					if(Zoom > ZOOM_IN_LIMIT) {
 						// Update the zoom using a fancy animation
-						var NewZoom = Zoom + ZOOM_SPEED;
-						ZoomVal = NewZoom.Clamp(ZOOM_MIN, ZOOM_MAX);
-						Tween TweenZoomOut = CreateTween();
+						var NewZoom = Zoom - ZOOM_SPEED;
+						ZoomVal = ClampVector2(NewZoom, ZOOM_IN_LIMIT, ZOOM_OUT_LIMIT);
+						SceneTreeTween TweenZoomOut = CreateTween();
 						TweenZoomOut.TweenProperty(this, "zoom", ZoomVal, 0.3f);
 						//ScalePlants(ZoomVal);
 					}
@@ -136,9 +141,23 @@ public partial class Camera : Camera2D {
 	//}
 	
 	// Arrow key camera movement
-	public override void _PhysicsProcess(double delta) {
+	public override void _PhysicsProcess(float delta) {
 		Vector2 direction = Input.GetVector("ui_left", "ui_right", "ui_up", "ui_down");
-		Position = Position.Lerp(Position + direction*CAMERA_SPEED * Zoom, CAMERA_SPEED * (float)delta);
+		Position = LerpVector2(Position, Position + direction*CAMERA_SPEED * Zoom, CAMERA_SPEED * (float)delta);
+	}
+
+	private static Vector2 ClampVector2(Vector2 toClamp, Vector2 min, Vector2 max) {
+		return new(
+			Mathf.Clamp(toClamp.x, min.x, max.x),
+			Mathf.Clamp(toClamp.y, min.y, max.y)
+		);
+	}
+
+	private static Vector2 LerpVector2(Vector2 from, Vector2 to, float weight) {
+		return new(
+			Mathf.Lerp(from.x, to.x, weight),
+			Mathf.Lerp(from.y, to.y, weight)
+		);
 	}
   
 
